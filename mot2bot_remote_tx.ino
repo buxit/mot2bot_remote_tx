@@ -103,13 +103,23 @@ struct RemoteData {
 
 struct RobotData {
   long magic;
+  uint8_t cmd;
   float bat_percent;
   float bat_voltage;
   int8_t rssi;
 };
 
+struct RobotSound {
+  long magic = 6435437;
+  uint8_t cmd = 1;
+  uint8_t id;
+  char name [16];
+};
+
+
 RemoteData sdata;
 RobotData rdata;
+RobotSound rsound;
 
 uint8_t i = 0;
 
@@ -210,7 +220,7 @@ short _h1, _h2, _v1, _v2;
 SlipMassageParser inbound;
 SlipMassagePacker outbound;
 
-uint8_t tryRecv() {
+uint8_t tryRecv(unsigned short line) {
   if (rf12_recvDone() && rf12_crc == 0) {
     uint8_t n = rf12_len;
     inbound.flush();
@@ -225,31 +235,53 @@ uint8_t tryRecv() {
   }
 }
 #else
-uint8_t tryRecv() {
-  //Serial.println("tryRecv()");
-  if (rf12_recvDone() && rf12_crc == 0) {
-    //Serial.println("rf12_recvDone() crc ok.");
-    memcpy(&rdata, (void*)rf12_data, sizeof(RobotData));
-    //Serial.println(rdata.magic);
-    if (rdata.magic == MAGIC_ROBOT) {
-      //Serial.println("Receive ok!");
-      lastRcv = millis();
-      if (bat_percent != rdata.bat_percent) {
-        bat_percent = rdata.bat_percent;
-        //Serial.println(bat);
-        //lcd.clear();
-        //openScreen(3);
+uint8_t tryRecv(unsigned short line) {
+  /*
+  Serial.print("tryRecv(): ");
+  Serial.print(line);
+  Serial.print(": ");
+  Serial.println(millis());
+  */
+  RobotData *rd = 0;
+  uint8_t cmd = 0;
+  do {
+    //Serial.println("tryRecv(__LINE__)");
+    if (rf12_recvDone() && rf12_crc == 0) {
+      //Serial.println("rf12_recvDone() crc ok.");
+      rd = (RobotData*)rf12_data;
+      if(rd->magic == MAGIC_ROBOT) {
+        cmd = rd->cmd;
+        switch(cmd) {
+          case 0: {
+            memcpy(&rdata, (void*)rf12_data, sizeof(RobotData));
+            lastRcv = millis();
+            if (bat_percent != rdata.bat_percent) {
+              bat_percent = rdata.bat_percent;
+            }
+            break;
+          }
+          case 1: {
+            memcpy(&rsound, (void*)rf12_data, sizeof(RobotSound));
+            Serial.print(F("sound: "));
+            Serial.print(rsound.id);
+            Serial.print(" '");
+            Serial.print(rsound.name);
+            Serial.println("'");
+            break;
+          }
+        }
+      } else {
+        Serial.print(F("Ignoring package with magic "));
+        Serial.println(rdata.magic);
       }
-    } else {
-      Serial.print(F("Ignoring package with magic "));
-      Serial.println(rdata.magic);
     }
-  }
+  } while(cmd == 1);
 }
 #endif
 void loop() {
   LCDML.loop();
-  tryRecv();
+
+  tryRecv(__LINE__);
 
   short h1 = horizontal.anaRead();
   if (h1 < h1_center)
@@ -296,7 +328,7 @@ void loop() {
   h2 /= 3 - g_gear;
   v2 /= 3 - g_gear;
 
-  tryRecv();
+  tryRecv(__LINE__);
 
   if (vertical2.digiRead() == 0) {
     sdata.mode |= MODE_CAM_CENTER;
@@ -305,12 +337,12 @@ void loop() {
     sdata.mode &= ~MODE_CAM_CENTER;
   }
 
-  tryRecv();
 #ifdef TAVBOT
   buttons = lcd.readButtons();
   if (horizontal.digiRead() == 0) {
     buttons |= BUTTON_BACK;
   }
+  tryRecv(__LINE__);
 #else
   if (buttonPressed) {
     buttonPressed = false;
@@ -328,7 +360,6 @@ void loop() {
 
   if (sendTimer.poll(100)) {
     g_needToSend = 1;
-  } else {
   }
 
   if (g_needToSend && rf12_canSend()) {
@@ -341,7 +372,8 @@ void loop() {
     rf12_sendStart((channel) | RF12_HDR_DST, &sdata, sizeof(sdata));
     rf12_sendWait(0);
     led(false);
-    tryRecv();
+
+    tryRecv(__LINE__);
 
     if (LCDML.MENU_getLayer() == 0) {
       char bp[6];
@@ -353,30 +385,46 @@ void loop() {
       }
 
       lcd.setCursor(0, 0);
+      tryRecv(__LINE__);
       lcd.print(F("M"));
+      tryRecv(__LINE__);
       lcd.print((sdata.mode & 0x7));
+      tryRecv(__LINE__);
       lcd.print(F(" G"));
+      tryRecv(__LINE__);
       lcd.print(g_gear + 1);
+      tryRecv(__LINE__);
       lcd.setCursor(6, 0);
+      tryRecv(__LINE__);
       lcd.print(rdata.rssi);
+      tryRecv(__LINE__);
       lcd.setCursor(10, 0);
       dtostrf(bat_percent, 5, 2, bp);
+      tryRecv(__LINE__);
       lcd.print(bp);
+      tryRecv(__LINE__);
       lcd.print("%");
 #ifdef PRINT_JOYSTICKS
+      tryRecv(__LINE__);
       lcd.setCursor(0, 1);
+      tryRecv(__LINE__);
       lcd.print(l2s(h2, 4));
+      tryRecv(__LINE__);
       lcd.setCursor(4, 1);
+      tryRecv(__LINE__);
       lcd.print(l2s(v2, 4));
+      tryRecv(__LINE__);
       lcd.setCursor(8, 1);
+      tryRecv(__LINE__);
       lcd.print(l2s(h1, 4));
+      tryRecv(__LINE__);
       lcd.setCursor(12, 1);
+      tryRecv(__LINE__);
       lcd.print(l2s(v1, 4));
 #endif
     }
     g_needToSend = 0;
   }
-  tryRecv();
 }
 
 String stringAlign(short num, byte width) {
