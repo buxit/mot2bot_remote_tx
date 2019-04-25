@@ -440,10 +440,17 @@ String stringAlign(short num, byte width) {
 }
 
 void sdataZusammenschrauben(short h1, short v1, short h2, short v2) {
-  sdata.h1 = h1;
-  sdata.h2 = h2;
-  sdata.v1 = v1;
-  sdata.v2 = v2;
+  if(sdata.mode & MODE_CRAWL) {
+    sdata.h1 = h2;
+    sdata.h2 = h1;
+    sdata.v1 = v2;
+    sdata.v2 = v1;
+  } else {
+    sdata.h1 = h1;
+    sdata.h2 = h2;
+    sdata.v1 = v1;
+    sdata.v2 = v2;
+  }
 }
 
 static word calcCrc (const void* ptr, byte len) {
